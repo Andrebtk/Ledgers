@@ -48,7 +48,13 @@ contract EthRejectingEmployee {
 }
 
 
+contract HumanResourcesHarness is HumanResources {
+    Employee internal blank; // never-registered employee (exists == false)
 
+    function exposedTotalAccruedUsdForUnknown() external view returns (uint256) {
+        return _totalAccruedUsd(blank);
+    }
+}
 
 
 contract HumanResourcesTest is Test {
@@ -755,5 +761,29 @@ contract HumanResourcesTest is Test {
         assertEq(hr.getActiveEmployeeCount(), 0);
     }
 
+
+        function test_WithdrawUsdc_RevertsIfTransferReturnsFalse() public {
+        _register(alice, WEEKLY);
+        skip(1 weeks);
+        vm.mockCall(address(usdc()), abi.encodeWithSelector(IERC20.transfer.selector), abi.encode(false));
+        vm.prank(alice);
+        vm.expectRevert(bytes("USDC transfer failed"));
+        hr.withdrawSalary();
+    }
+
+    function test_WithdrawEth_RevertsIfApproveReturnsFalse() public {
+        _register(alice, WEEKLY);
+        _switch(alice);
+        skip(1 weeks);
+        vm.mockCall(address(usdc()), abi.encodeWithSelector(IERC20.approve.selector), abi.encode(false));
+        vm.prank(alice);
+        vm.expectRevert(bytes("USDC approve failed"));
+        hr.withdrawSalary();
+    }
+
+    function test_TotalAccruedUsd_UnknownEmployeeReturnsZero() public {
+        HumanResourcesHarness harness = new HumanResourcesHarness();
+        assertEq(harness.exposedTotalAccruedUsdForUnknown(), 0);
+    }
 
 }
