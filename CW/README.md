@@ -18,6 +18,8 @@ An HR payroll contract on Optimism. Employees accrue a weekly USD salary continu
 | `hrManager` | The deployer, set immutably at deployment. |
 | `getActiveEmployeeCount` | Number of active employees. |
 | `getEmployeeInfo` | `(weeklyUsdSalary, employedSince, terminatedAt)`, where `terminatedAt` is 0 while active. All zeros if unknown. |
+
+
 ## Oracle and AMM integration
 
 For ETH withdrawals, the contract reads the ETH/USD price from Chainlink and converts the owed USD into the expected ETH amount. It then swaps USDC for WETH on Uniswap V3 (0.05% pool), with `amountOutMinimum` set to 98% of that amount, so the swap reverts if slippage or price manipulation exceeds 2%. The WETH is unwrapped and sent to the employee as native ETH with a checked `call`, after the balance has already been cleared to prevent re-entrancy.
