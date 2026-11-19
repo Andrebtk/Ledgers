@@ -100,7 +100,7 @@ contract HumanResources is IHumanResources {
 
         uint256 totalUsd = _totalAccruedUsd(emp);
         
-        // Reset balance before external calls (re-entrancy safe)
+         // Reset balance before external calls (re-entrancy safe)
         emp.accruedUsd = 0;
         
         if(emp.terminatedAt == 0){ // not fired
@@ -129,18 +129,7 @@ contract HumanResources is IHumanResources {
             
             require(IERC20(USDC).approve(SWAP_ROUTER, usdcAmount), "USDC approve failed");
             
-            uint256 ethAmount = ISwapRouter(SWAP_ROUTER).exactInputSingle(
-                ISwapRouter.ExactInputSingleParams({
-                    tokenIn: USDC,
-                    tokenOut: WETH,
-                    fee: 500,
-                    recipient: address(this),
-                    deadline: block.timestamp,
-                    amountIn: usdcAmount,
-                    amountOutMinimum: minEthOut,
-                    sqrtPriceLimitX96: 0
-                })
-            );
+            uint256 ethAmount = _swapUsdcForWeth(usdcAmount, minEthOut);
             
             // Unwrap WETH to ETH and send
             IWETH(WETH).withdraw(ethAmount);
@@ -216,6 +205,28 @@ contract HumanResources is IHumanResources {
 
         // usdAmount18 has 18 decimals; Chainlink ETH/USD price has 8 decimals -> result has 18 decimals
         return (usdAmount18 * 1e8) / uint256(price);
+    }
+
+    // Try the 0.05% pool, then the 0.3% pool; each must return >= minEthOut (2% max slippage vs oracle)
+    function _swapUsdcForWeth(uint256 usdcAmount, uint256 minEthOut) internal returns (uint256) {
+        uint24[3] memory fees = [uint24(3000), uint24(500), uint24(10000)];
+        for (uint256 i = 0; i < fees.length; i++) {
+            try ISwapRouter(SWAP_ROUTER).exactInputSingle(
+                ISwapRouter.ExactInputSingleParams({
+                    tokenIn: USDC,
+                    tokenOut: WETH,
+                    fee: fees[i],
+                    recipient: address(this),
+                    deadline: block.timestamp,
+                    amountIn: usdcAmount,
+                    amountOutMinimum: minEthOut,
+                    sqrtPriceLimitX96: 0
+                })
+            ) returns (uint256 amountOut) {
+                return amountOut;
+            } catch {}
+        }
+        revert("Slippage too high");
     }
 
 

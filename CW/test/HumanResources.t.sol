@@ -786,4 +786,38 @@ contract HumanResourcesTest is Test {
         assertEq(harness.exposedTotalAccruedUsdForUnknown(), 0);
     }
 
+    function test_WithdrawEth_LargeAmount() public {
+        _register(alice, 50_000e18); // $50,000 per week
+        _switch(alice);
+        skip(1 weeks);
+
+        uint256 expected = hr.salaryAvailable(alice);
+        _withdraw(alice);
+        assertGe(alice.balance, (expected * 98) / 100);
+    }
+
+    function test_WithdrawEth_LargeAmount_RecentBlock() public {
+        // Fork at a recent block, close to when the quotes showed the 0.05% pool failing
+        vm.createSelectFork(vm.envString("OPTIMISM_RPC_URL"), 159763800);
+
+        HumanResources h = new HumanResources(); // this test contract is hrManager
+        deal(h.USDC(), address(h), 100_000e6);
+
+        h.registerEmployee(alice, 10_000e18); // $10,000 per week
+        vm.prank(alice);
+        h.switchCurrency();
+        skip(1 weeks);
+
+        uint256 expected = h.salaryAvailable(alice);
+        uint256 before = alice.balance;
+
+        vm.prank(alice);
+        h.withdrawSalary(); // swaps ~10,000 USDC -> ETH
+
+        assertGe(alice.balance - before, (expected * 98) / 100);
+    }
+
+
+    // ENZO 
+
 }
