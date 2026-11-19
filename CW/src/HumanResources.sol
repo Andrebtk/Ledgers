@@ -25,7 +25,7 @@ contract HumanResources is IHumanResources {
         uint256 employedSince;
         uint256 terminatedAt;
         uint256 lastAccrualUpdate;      // start of the current accrual period
-        uint256 accruedUsd;             // collected, unwithrawn USD (18 decimals)
+        uint256 accruedUsd;             // collected, unwithdrawn USD (18 decimals)
         bool prefersEth;                // false = USDC (default)
         bool exists;                    // was ever registered
     }
@@ -100,7 +100,7 @@ contract HumanResources is IHumanResources {
 
         uint256 totalUsd = _totalAccruedUsd(emp);
         
-         // Reset balance before external calls (re-entrancy safe)
+        // Reset balance before external calls (re-entrancy safe)
         emp.accruedUsd = 0;
         
         if(emp.terminatedAt == 0){ // not fired
@@ -122,10 +122,11 @@ contract HumanResources is IHumanResources {
                 return;
             }
             
+            // Calculate expected ETH from Chainlink
             uint256 expectedEth = _usdToEth(totalUsd);
             uint256 minEthOut = (expectedEth * 98) / 100; // max 2% slippage vs oracle
 
-            // Calculate expected ETH from Chainlink
+            
             require(IERC20(USDC).approve(SWAP_ROUTER, usdcAmount), "USDC approve failed");
             
             uint256 ethAmount = ISwapRouter(SWAP_ROUTER).exactInputSingle(
