@@ -2,12 +2,20 @@ pragma solidity ^0.8.24;
 
 import "./IHumanResources.sol";
 import "./interfaces/IERC20.sol";
+import "./interfaces/IWETH.sol";
+import "./interfaces/AggregatorV3Interface.sol";
+import "./interfaces/ISwapRouter.sol";
 
 contract HumanResources is IHumanResources {
+    
+    address public constant USDC = 0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85;
+    address public constant WETH = 0x4200000000000000000000000000000000000006;
+    address public constant ETH_USD_FEED = 0x13e3Ee699D1909E989722E753853AE30b17e08c5;
+    address public constant SWAP_ROUTER = 0xE592427A0AEce92De3Edee1F18E0157C05861564;
+
     uint256 private _activeEmployeeCount;
     address private immutable _hrManager = msg.sender;
 
-    address public constant USDC = 0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85;
 
     struct Employee {
         uint256 weeklyUsdSalary;
@@ -19,7 +27,9 @@ contract HumanResources is IHumanResources {
         bool exists;
     }
 
+
     mapping(address => Employee) private _employees;
+    receive() external payable {}
 
     // HR Manager Functions
 
@@ -79,25 +89,55 @@ contract HumanResources is IHumanResources {
         if (!emp.exists) {
             revert NotAuthorized();
         }
+
         uint256 totalUsd = _totalAccruedUsd(emp);
+        
         emp.accruedUsd = 0;
+        
         if(emp.terminatedAt == 0){ // not fired
             emp.lastAccrualUpdate = block.timestamp;
         }
 
-        if(!emp.prefersEth){
-            uint256 usdcAmount = totalUsd / 1e12;
+        uint256 usdcAmount = totalUsd / 1e12;
+
+        if(!emp.prefersEth){    
+            emit SalaryWithdrawn(msg.sender, false, usdcAmount);
 
             if (usdcAmount > 0) {
                 require(IERC20(USDC).transfer(msg.sender, usdcAmount), "USDC transfer failed");
             }
-
-
-            emit SalaryWithdrawn(msg.sender, false, usdcAmount);
         }
         else {
-            // TO DO
-            emit SalaryWithdrawn(msg.sender, false, 0);
+            if (usdcAmount == 0) {
+                emit SalaryWithdrawn(msg.sender, true, 0);
+                return;
+            }
+            
+            uint256 expectedEth = _usdToEth(totalUsd);
+            uint256 minEthOut = (expectedEth * 98) / 100;
+
+            // Calculate expected ETH from Chainlink
+            require(IERC20(USDC).approve(SWAP_ROUTER, usdcAmount), "USDC approve failed");
+            
+            uint256 ethAmount = ISwapRouter(SWAP_ROUTER).exactInputSingle(
+                ISwapRouter.ExactInputSingleParams({
+                    tokenIn: USDC,
+                    tokenOut: WETH,
+                    fee: 500,
+                    recipient: address(this),
+                    deadline: block.timestamp,
+                    amountIn: usdcAmount,
+                    amountOutMinimum: minEthOut,
+                    sqrtPriceLimitX96: 0
+                })
+            );
+            
+            // Unwrap WETH -> native ETH and send to employee
+            IWETH(WETH).withdraw(ethAmount);
+            emit SalaryWithdrawn(msg.sender, true, ethAmount);
+
+            (bool ok, ) = msg.sender.call{value: ethAmount}("");
+            require(ok, "ETH transfer failed");
         }
 
     }
@@ -116,8 +156,7 @@ contract HumanResources is IHumanResources {
             return totalUsd / 1e12;
         }
         else {
-            // TODO
-            return 0;
+            return _usdToEth(totalUsd);
         }
     }
 
@@ -158,6 +197,16 @@ contract HumanResources is IHumanResources {
         uint256 currentPeriodAccrued = (emp.weeklyUsdSalary * elapsed) / 1 weeks;
         return emp.accruedUsd + currentPeriodAccrued;
     } 
+
+
+    function _usdToEth(uint256 usdAmount18) internal view returns (uint256) {
+        if (usdAmount18 == 0) return 0;
+        (, int256 price, , , ) = AggregatorV3Interface(ETH_USD_FEED).latestRoundData();
+        require(price > 0, "Invalid oracle price");
+
+        // usdAmount18 has 18 decimals; Chainlink ETH/USD price has 8 decimals -> result has 18 decimals
+        return (usdAmount18 * 1e8) / uint256(price);
+    }
 
 
 }

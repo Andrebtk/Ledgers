@@ -53,4 +53,23 @@ contract HumanResourcesTest is Test {
         assertEq(IERC20(hr.USDC()).balanceOf(alice), 1000e6);
         assertEq(hr.salaryAvailable(alice), 0);
     }
+
+    function testSwitchCurrencyAndWithdrawEth() public {
+        hr.registerEmployee(alice, 1000e18);
+
+        vm.prank(alice);
+        hr.switchCurrency();
+
+        vm.warp(vm.getBlockTimestamp() + 1 weeks);
+
+        uint256 expectedEth = hr.salaryAvailable(alice);
+        assertGt(expectedEth, 0);
+
+        vm.prank(alice);
+        hr.withdrawSalary();
+
+        // Verify Alice received native ETH within 2% of Chainlink oracle price
+        assertGe(alice.balance, (expectedEth * 98) / 100);
+        assertEq(hr.salaryAvailable(alice), 0);
+    }
 }
