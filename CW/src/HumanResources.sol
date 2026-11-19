@@ -100,7 +100,7 @@ contract HumanResources is IHumanResources {
 
         uint256 totalUsd = _totalAccruedUsd(emp);
         
-         // Reset balance before external calls (re-entrancy safe)
+        // Reset balance before external calls (re-entrancy safe)
         emp.accruedUsd = 0;
         
         if(emp.terminatedAt == 0){ // not fired
@@ -207,7 +207,7 @@ contract HumanResources is IHumanResources {
         return (usdAmount18 * 1e8) / uint256(price);
     }
 
-    // Try the 0.05% pool, then the 0.3% pool; each must return >= minEthOut (2% max slippage vs oracle)
+    // Try the 0.3%, 0.05% then 1% pools; each must return >= minEthOut (2% max slippage vs oracle)
     function _swapUsdcForWeth(uint256 usdcAmount, uint256 minEthOut) internal returns (uint256) {
         uint24[3] memory fees = [uint24(3000), uint24(500), uint24(10000)];
         for (uint256 i = 0; i < fees.length; i++) {

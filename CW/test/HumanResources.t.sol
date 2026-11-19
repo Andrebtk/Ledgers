@@ -816,8 +816,4 @@ contract HumanResourcesTest is Test {
 
         assertGe(alice.balance - before, (expected * 98) / 100);
     }
-
-
-    // ENZO 
-
 }
