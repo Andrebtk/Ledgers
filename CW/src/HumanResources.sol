@@ -7,8 +7,11 @@ import "./interfaces/IWETH.sol";
 import "./interfaces/AggregatorV3Interface.sol";
 import "./interfaces/ISwapRouter.sol";
 
+
+// HR payroll: salaries accrue in USD, paid in USDC or ETH
 contract HumanResources is IHumanResources {
     
+    // Optimism addresses
     address public constant USDC = 0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85;
     address public constant WETH = 0x4200000000000000000000000000000000000006;
     address public constant ETH_USD_FEED = 0x13e3Ee699D1909E989722E753853AE30b17e08c5;
@@ -17,20 +20,20 @@ contract HumanResources is IHumanResources {
     uint256 private _activeEmployeeCount;
     address private immutable _hrManager = msg.sender;
 
-
     struct Employee {
-        uint256 weeklyUsdSalary;
+        uint256 weeklyUsdSalary;        // 18 decimals
         uint256 employedSince;
         uint256 terminatedAt;
-        uint256 lastAccrualUpdate;
-        uint256 accruedUsd;
-        bool prefersEth;
-        bool exists;
+        uint256 lastAccrualUpdate;      // start of the current accrual period
+        uint256 accruedUsd;             // collected, unwithrawn USD (18 decimals)
+        bool prefersEth;                // false = USDC (default)
+        bool exists;                    // was ever registered
     }
 
 
     mapping(address => Employee) private _employees;
     receive() external payable {}
+
 
     // HR Manager Functions
 
@@ -44,6 +47,8 @@ contract HumanResources is IHumanResources {
                 revert EmployeeAlreadyRegistered();
             }
 
+
+            // Re-registration keeps accruedUsd, restarts accrual, resets currency to USDC
             emp.weeklyUsdSalary = weeklyUsdSalary;
             emp.employedSince = block.timestamp;
             emp.terminatedAt = 0;
@@ -62,7 +67,8 @@ contract HumanResources is IHumanResources {
         if(!emp.exists || emp.terminatedAt != 0){
             revert EmployeeNotRegistered();
         }
-
+        
+        // Bank earned salary, then stop accrual
         emp.accruedUsd = _totalAccruedUsd(emp);
         emp.terminatedAt = block.timestamp;
 
@@ -72,6 +78,7 @@ contract HumanResources is IHumanResources {
 
 
     // Employee Functions
+
     function switchCurrency() external override {
         
         Employee storage emp = _employees[msg.sender];
@@ -93,13 +100,14 @@ contract HumanResources is IHumanResources {
 
         uint256 totalUsd = _totalAccruedUsd(emp);
         
+         // Reset balance before external calls (re-entrancy safe)
         emp.accruedUsd = 0;
         
         if(emp.terminatedAt == 0){ // not fired
             emp.lastAccrualUpdate = block.timestamp;
         }
 
-        uint256 usdcAmount = totalUsd / 1e12;
+        uint256 usdcAmount = totalUsd / 1e12; // 18 -> 6 decimals
 
         if(!emp.prefersEth){    
             emit SalaryWithdrawn(msg.sender, false, usdcAmount);
@@ -115,7 +123,7 @@ contract HumanResources is IHumanResources {
             }
             
             uint256 expectedEth = _usdToEth(totalUsd);
-            uint256 minEthOut = (expectedEth * 98) / 100;
+            uint256 minEthOut = (expectedEth * 98) / 100; // max 2% slippage vs oracle
 
             // Calculate expected ETH from Chainlink
             require(IERC20(USDC).approve(SWAP_ROUTER, usdcAmount), "USDC approve failed");
@@ -133,7 +141,7 @@ contract HumanResources is IHumanResources {
                 })
             );
             
-            // Unwrap WETH -> native ETH and send to employee
+            // Unwrap WETH to ETH and send
             IWETH(WETH).withdraw(ethAmount);
             emit SalaryWithdrawn(msg.sender, true, ethAmount);
 
@@ -193,7 +201,7 @@ contract HumanResources is IHumanResources {
             return emp.accruedUsd;
         }
 
-
+        // Linear accrual since lastAccrualUpdate
         uint256 elapsed = block.timestamp - emp.lastAccrualUpdate;
         uint256 currentPeriodAccrued = (emp.weeklyUsdSalary * elapsed) / 1 weeks;
         return emp.accruedUsd + currentPeriodAccrued;
