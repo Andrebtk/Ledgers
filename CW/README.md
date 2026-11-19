@@ -22,4 +22,4 @@ An HR payroll contract on Optimism. Employees accrue a weekly USD salary continu
 
 ## Oracle and AMM integration
 
-For ETH withdrawals, the contract reads the ETH/USD price from Chainlink and converts the owed USD into the expected ETH amount. It then swaps USDC for WETH on Uniswap V3 (0.05% pool), with `amountOutMinimum` set to 98% of that amount, so the swap reverts if slippage or price manipulation exceeds 2%. The WETH is unwrapped and sent to the employee as native ETH with a checked `call`, after the balance has already been cleared to prevent re-entrancy.
+For ETH withdrawals, the contract reads the ETH/USD price from Chainlink and converts the owed USD into the expected ETH amount. It then swaps USDC for WETH on Uniswap V3 (trying the 0.3%, 0.05% and 1% pools in turn), with `amountOutMinimum` set to 98% of that amount, so the swap reverts if slippage or price manipulation exceeds 2%. The WETH is unwrapped and sent to the employee as native ETH with a checked `call`, after the balance has already been cleared to prevent re-entrancy.
